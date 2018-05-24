@@ -7,10 +7,6 @@
 /**
  * main.c
  */
-//	0x7F,0x8C,0x98,0xA5,0xB1,0xBC,0xC7,0xD1,0xDA,0xE3,0xEA,0xF0,0xF6,0xFA,0xFD,0xFE,
-//	0xFE,0xFE,0xFB,0xF8,0xF3,0xED,0xE7,0xDF,0xD6,0xCC,0xC1,0xB6,0xAB,0x9E,0x92,0x85,
-//	0x79,0x6C,0x60,0x53,0x48,0x3D,0x32,0x28,0x1F,0x17,0x11,0x0B,0x06,0x03,0x00,0x00,
-//	0x00,0x01,0x04,0x08,0x0E,0x14,0x1B,0x24,0x2D,0x37,0x42,0x4D,0x59,0x66,0x72,0x7F
 unsigned int cnt = 4, tnt = 0, mode = 0;
 const unsigned int sin_wave[Num]=
 {
@@ -44,29 +40,9 @@ const unsigned int sin_wave1[Num]=
 	453,459,465,471,477,483,489
 };
 
-void changePWM(int high_time1, int high_time2, int mod)
-{
-	switch(mod)
-	{
-	case 0:
-		TA0CCTL3 = OUTMOD_6;
-		TA0CCTL2 = OUTMOD_2;
-		TA0CCR3 = high_time1;
-		TA0CCR2 = high_time2;
-		break;
-	case 1:
-		TA0CCTL3 = OUTMOD_2;
-		TA0CCTL2 = OUTMOD_6 ;
-		TA0CCR3 = high_time2;
-		TA0CCR2 = high_time1;
-		break;
-	default:break;
-	}
-}
-
 void ADC_Init()
 {
-    P6SEL |= BIT3;                            // P6.1 ADC option select
+    P6SEL |= BIT3;                            // P6.3 ADC option select
     ADC12CTL0 = ADC12ON + ADC12MSC;         // Sampling time, ADC12 on
     ADC12CTL1 = ADC12CONSEQ1 + ADC12SHP;
     ADC12CTL2 = ADC12RES_0;
@@ -77,16 +53,6 @@ void ADC_Init()
 
 void Timer_Init()
 {
-
-//	P3DIR |= BIT2;
-//	P3SEL |= BIT2;
-//	P3DIR |= BIT3;
-//	P3SEL |= BIT3;
-//	TA1CCTL1 = OUTMOD_6;//Q1,3
-//	TA1CCTL2 = OUTMOD_2 ;//Q2,4
-//	TA1CCR0 = RATE;
-//	TA1CTL |= MC_3 + TASSEL_2 + TACLR;
-
 	P1DIR |= BIT4;
 	P1SEL |= BIT4;
 	P1DIR |= BIT3;
@@ -96,7 +62,7 @@ void Timer_Init()
 	TA0CCR0 = RATE;
 	TA0CTL |= MC_3 + TASSEL_2 + TACLR;
 
-	TB0CCR0 = RATE*2;
+	TB0CCR0 = RATE*2-1;
 	TB0CTL |= MC_1 + TASSEL_2 + TACLR;
 	TB0CCTL0 = CCIE;
 }
@@ -111,34 +77,41 @@ int main(void)
 	while(1)
 	{
 //		ADC12CTL0 |= ADC12SC;
-//		changePWM(sin_wave[cnt],sin_wave1[cnt],mode);
-//		tnt++;
-//		cnt = (tnt==3)?cnt+1:cnt;
-//		tnt %= 3;
-//		//if((cnt==Num/5)&&(mode == 1||mode == 3))
-//		if(cnt == Num-adjust)
-//		{
-//			cnt = adjust;
-//			mode++;
-//		}
-//		mode %=2;
 	}
 }
 
 #pragma vector=TIMER0_B0_VECTOR
 __interrupt void TIMER0_B0_ISR(void)
 {
-	changePWM(sin_wave[cnt++],sin_wave1[cnt++],mode);
-//	tnt++;
-//	cnt = (tnt==3)?cnt+1:cnt;
-//	tnt %= 3;
-	//if((cnt==Num/5)&&(mode == 1||mode == 3))
+	cnt++;
 	if(cnt == Num-adjust)
 	{
 		cnt = adjust;
 		mode++;
 	}
 	mode %=2;
+	switch(mode)
+	{
+	case 0:
+		if(cnt == adjust)
+		{
+			TA0CCTL3 = OUTMOD_6;
+			TA0CCTL2 = OUTMOD_2;
+		}
+		TA0CCR3 = sin_wave[cnt];
+		TA0CCR2 = sin_wave1[cnt];
+		break;
+	case 1:
+		if(cnt == adjust)
+		{
+			TA0CCTL2 = OUTMOD_6
+			TA0CCTL3 = OUTMOD_2;
+		}
+		TA0CCR3 = sin_wave1[cnt];
+		TA0CCR2 = sin_wave[cnt];
+		break;
+	default:break;
+	}
 }
 
 #pragma vector = ADC12_VECTOR
