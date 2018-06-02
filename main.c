@@ -1,149 +1,309 @@
-#include <msp430.h> 
+#include <msp430.h>
 #include "setclock.h"
-#define Num 256
-#define RATE 510
-#define adjust 22
+#include "ads1118.h"
+#include "oled.h"
+#include "bmp.h"
+#define Num 512
+//#define RATE 2300
+#define RATE 2700
+//#define RATE 1670
 
 /**
- * main.c
+ * main.c 25313K
  */
-unsigned int cnt = 4, tnt = 0, mode = 0;
-const unsigned int sin_wave[Num]=
-{
-	495 ,489 ,483 ,477 ,471 ,465 ,459 ,453 ,447 ,441 ,435 ,429 ,423 ,417 ,411 ,405 ,399 ,
-	393 ,388 ,382 ,376 ,370 ,364 ,358 ,353 ,347 ,341 ,335 ,330 ,324 ,319 ,313 ,307 ,302 ,
-	296 ,291 ,285 ,280 ,275 ,269 ,264 ,259 ,253 ,248 ,243 ,238 ,233 ,228 ,223 ,218 ,213 ,
-	208 ,203 ,198 ,194 ,189 ,184 ,180 ,175 ,171 ,166 ,162 ,157 ,153 ,149 ,145 ,140 ,136 ,
-	132 ,128 ,124 ,120 ,117 ,113 ,109 ,106 ,102 ,98 ,95 ,92 ,88 ,85 ,82 ,79 ,75 ,72 ,69 ,
-	67 ,64 ,61 ,58 ,56 ,53 ,50 ,48 ,46 ,43 ,41 ,39 ,37 ,35 ,33 ,31 ,29 ,27 ,26 ,24 ,23 ,
-	21 ,20 ,18 ,17 ,16 ,15 ,14 ,13 ,12 ,11 ,10 ,10 ,9 ,9 ,8 ,8 ,8 ,7 ,7 ,7 ,7 ,7 ,7 ,8 ,
-	8 ,8 ,9 ,9 ,10 ,10 ,11 ,12 ,13 ,14 ,15 ,16 ,17 ,18 ,20 ,21 ,23 ,24 ,26 ,27 ,29 ,31 ,
-	33 ,35 ,37 ,39 ,41 ,43 ,46 ,48 ,50 ,53 ,56 ,58 ,61 ,64 ,67 ,69 ,72 ,75 ,79 ,82 ,85 ,
-	88 ,92 ,95 ,98 ,102 ,106 ,109 ,113 ,117 ,120 ,124 ,128 ,132 ,136 ,140 ,145 ,149 ,153 ,
-	157 ,162 ,166 ,171 ,175 ,180 ,184 ,189 ,194 ,198 ,203 ,208 ,213 ,218 ,223 ,228 ,233 ,
-	238 ,243 ,248 ,253 ,259 ,264 ,269 ,275 ,280 ,285 ,291 ,296 ,302 ,307 ,313 ,319 ,324 ,
-	330 ,335 ,341 ,347 ,353 ,358 ,364 ,370 ,376 ,382 ,388 ,393 ,399 ,405 ,411 ,417 ,423 ,
-	429 ,435 ,441 ,447 ,453 ,459 ,465 ,471 ,477 ,483 ,489 ,495
+static unsigned short cnt = 0;
+static unsigned int freq_mul = 334, step = 7, freq_sum = 342;//150
+unsigned int mode = 1, Config_M = 0x44, Config_L = 0x8B;
+unsigned int check1 = 0, check2 = 0, wt = 0;
+float ADS1118_Voltage = 0, freq = 0;
+unsigned int Config_Result_M, Config_Result_L;
+unsigned int waveform = 0;
+
+const unsigned int sin_wave[Num] = {262, 265, 268, 271, 274, 277, 281, 284, 287, 290, 293, 296, 299, 302, 306, 309, 312, 315, 318, 321, 324, 327, 330, 333, 336, 339, 342, 345, 348, 351, 354, 357, 360, 363, 366, 369, 372, 374, 377, 380, 383, 386, 388, 391, 394, 397, 399, 402, 404, 407, 410, 412, 415, 417, 420, 422, 425, 427, 430, 432, 434, 437, 439, 441, 443, 446, 448, 450, 452, 454, 456, 458, 460, 462, 464, 466, 468, 470, 472, 473, 475, 477, 479, 480, 482, 483, 485, 487, 488, 489, 491, 492, 494, 495, 496, 497, 499, 500, 501, 502, 503, 504, 505, 506, 507, 508, 509, 510, 510, 511, 512, 512, 513, 514, 514, 515, 515, 516, 516, 516, 517, 517, 517, 517, 517, 518, 518, 518, 518, 518, 518, 517, 517, 517, 517, 517, 516, 516, 516, 515, 515, 514, 514, 513, 512, 512, 511, 510, 510, 509, 508, 507, 506, 505, 504, 503, 502, 501, 500, 499, 497, 496, 495, 494, 492, 491, 489, 488, 487, 485, 483, 482, 480, 479, 477, 475, 473, 472, 470, 468, 466, 464, 462, 460, 458, 456, 454, 452, 450, 448, 446, 443, 441, 439, 437, 434, 432, 430, 427, 425, 422, 420, 417, 415, 412, 410, 407, 404, 402, 399, 397, 394, 391, 388, 386, 383, 380, 377, 374, 372, 369, 366, 363, 360, 357, 354, 351, 348, 345, 342, 339, 336, 333, 330, 327, 324, 321, 318, 315, 312, 309, 306, 302, 299, 296, 293, 290, 287, 284, 281, 277, 274, 271, 268, 265, 262,
+		259, 256, 253, 250, 247, 244, 240, 237, 234, 231, 228, 225, 222, 219, 215, 212, 209, 206, 203, 200, 197, 194, 191, 188, 185, 182, 179, 176, 173, 170, 167, 164, 161, 158, 155, 152, 149, 147, 144, 141, 138, 135, 133, 130, 127, 124, 122, 119, 117, 114, 111, 109, 106, 104, 101, 99, 96, 94, 91, 89, 87, 84, 82, 80, 78, 75, 73, 71, 69, 67, 65, 63, 61, 59, 57, 55, 53, 51, 49, 48, 46, 44, 42, 41, 39, 38, 36, 34, 33, 32, 30, 29, 27, 26, 25, 24, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 11, 10, 9, 9, 8, 7, 7, 6, 6, 5, 5, 5, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5, 6, 6, 7, 7, 8, 9, 9, 10, 11, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 25, 26, 27, 29, 30, 32, 33, 34, 36, 38, 39, 41, 42, 44, 46, 48, 49, 51, 53, 55, 57, 59, 61, 63, 65, 67, 69, 71, 73, 75, 78, 80, 82, 84, 87, 89, 91, 94, 96, 99, 101, 104, 106, 109, 111, 114, 117, 119, 122, 124, 127, 130, 133, 135, 138, 141, 144, 147, 149, 152, 155, 158, 161, 164, 167, 170, 173, 176, 179, 182, 185, 188, 191, 194, 197, 200, 203, 206, 209, 212, 215, 219, 222, 225, 228, 231, 234, 237, 240, 244, 247, 250, 253, 256, 259,
 };
-const unsigned int sin_wave1[Num]=
+
+
+void ADS1118_init(void)
 {
-	489,483,477,471,465,459,453,447,441,435,429,423,417,411,405,399,393,387,382,376,370,
-	364,358,352,347,341,335,329,324,318,313,307,301,296,290,285,279,274,269,263,258,253,
-	247,242,237,232,227,222,217,212,207,202,197,192,188,183,178,174,169,165,160,156,151,
-	147,143,139,134,130,126,122,118,114,111,107,103,100,96,92,89,86,82,79,76,73,69,66,63,
-	61,58,55,52,50,47,44,42,40,37,35,33,31,29,27,25,23,21,20,18,17,15,14,12,11,10,9,8,7,6,
-	5,4,4,3,3,2,2,2,1,1,1,1,1,1,2,2,2,3,3,4,4,5,6,7,8,9,10,11,12,14,15,17,18,20,21,23,25,27,
-	29,31,33,35,37,40,42,44,47,50,52,55,58,61,63,66,69,73,76,79,82,86,89,92,96,100,103,107,
-	111,114,118,122,126,130,134,139,143,147,151,156,160,165,169,174,178,183,188,192,197,202,
-	207,212,217,222,227,232,237,242,247,253,258,263,269,274,279,285,290,296,301,307,313,318,
-	324,329,335,341,347,352,358,364,370,376,382,387,393,399,405,411,417,423,429,435,441,447,
-	453,459,465,471,477,483,489
-};
+	ADS1118_CS_OUT;
+	ADS1118_CLK_OUT;
+	ADS1118_IN_OUT;
+	ADS1118_OUT_IN;
+	CLR_ADS1118_CS;
+	_NOP();
+	CLR_ADS1118_CLK;
+	_NOP();
+	CLR_ADS1118_IN;
+	_NOP();
+}
+
+unsigned char ADS1118_Read(unsigned char data)   //SPI为全双工通信方式
+{
+	unsigned char i,temp,Din;
+	temp=data;
+	for(i=0;i<8;i++)
+	{
+		Din = Din<<1;
+		SET_ADS1118_CLK;
+		__delay_cycles(1);
+		if(ADS1118_OUT_Val)
+			Din |= 0x01;
+		if(0x80&temp)
+			SET_ADS1118_IN;
+		else
+			CLR_ADS1118_IN;
+		CLR_ADS1118_CLK;
+		__delay_cycles(1);
+		temp = (temp<<1);
+	}
+	return Din;
+}
 
 void ADC_Init()
 {
-    P6SEL |= BIT3;                            // P6.3 ADC option select
+    P6SEL |= BIT3;                            // P6.1 ADC option select
     ADC12CTL0 = ADC12ON + ADC12MSC;         // Sampling time, ADC12 on
-    ADC12CTL1 = ADC12CONSEQ1 + ADC12SHP;
+    ADC12CTL1 = ADC12SHP + ADC12SSEL_1;
     ADC12CTL2 = ADC12RES_0;
     ADC12MCTL0 = ADC12INCH_3;
     ADC12CTL0 |= ADC12ENC;
-    ADC12IE = 0x01;
 }
 
 void Timer_Init()
 {
-	P1DIR |= BIT4;
-	P1SEL |= BIT4;
-	P1DIR |= BIT3;
-	P1SEL |= BIT3;
-	TA0CCTL3 = OUTMOD_6;//Q1,3
-	TA0CCTL2 = OUTMOD_2 ;//Q2,4
-	TA0CCR0 = RATE;
-	TA0CTL |= MC_3 + TASSEL_2 + TACLR;
+	P9DIR |= BIT6;
+	P9OUT |= BIT6;
+	P8DIR |= BIT2;
+	P8OUT &= ~BIT2;
+	TA1CCR0 = RATE;
+	TA1CCR1 = 0;
+	TA1CTL |= MC_1 + TASSEL_2 + TACLR;
+	TA1CCTL0 = CCIE;
+	TA1CCTL1 = CCIE;
+}
 
-	TB0CCR0 = RATE*2-1;
-	TB0CTL |= MC_1 + TASSEL_2 + TACLR;
-	TB0CCTL0 = CCIE;
+void ADS1118_Get_U(void)
+{
+	CLR_ADS1118_CS;
+	unsigned int i=0;
+	unsigned char Data_REG_H,Data_REG_L;
+	unsigned int Data_REG;
+	while((ADS1118_OUT_Val)&&(i<1000)) i++;
+	Data_REG_H=ADS1118_Read(Config_M);
+	__delay_cycles(1);
+	Data_REG_L=ADS1118_Read(Config_L);
+	Data_REG=(Data_REG_H<<8)+Data_REG_L;
+	ADS1118_CS_OUT;
+//	Config_Result_M = ADS1118_Read(Config_M);
+//	__delay_cycles(1);
+//	Config_Result_L = ADS1118_Read(Config_L);
+	CLR_ADS1118_IN;
+	_NOP();
+	if(Data_REG>=0x8000)
+	{
+		Data_REG=0xFFFF-Data_REG;//把0xFFFF改成0x10000
+		ADS1118_Voltage=(-1.0)*((Data_REG*FS/0x8000));
+	}
+	else
+		ADS1118_Voltage=(1.0)*((Data_REG*FS/32768));
+}
+
+const unsigned int TA1[12] = { 2720, 2717, 2715, 2712, 2706, 2704, 2703, 2696, 2690, 2684, 2678, 2675 };
+void adjust_PWM()
+{
+	int v = (int)(ADS1118_Voltage*1000);
+	if(v<60)
+	{
+		TA1CCR0 = TA1[0]+20;
+		step = 7;
+	}
+	else if(v>60 && v<75)
+	{
+		TA1CCR0 = TA1[0]+14;//2720;
+		step = 7;
+	}
+	else if(v>75 && v<97)
+	{
+		TA1CCR0 = TA1[0]+13;//2720;
+		step = 6;
+	}
+	else if(v>97 && v<119)
+	{
+		TA1CCR0 = TA1[1]+13;//2717;
+		step = 7;
+	}
+	else if(v>119 && v<129)
+	{
+		TA1CCR0 = TA1[3]+16;//2712;
+		step = 7;
+	}
+	else if(v>129 && v<156)
+	{
+		TA1CCR0 = TA1[3]+16;//2712;
+		step = 7;
+	}
+	else if(v>156 && v<188)
+	{
+		TA1CCR0 = TA1[4]+19;//2706
+		step = 7;
+	}
+	else if(v>188 && v<200)
+	{
+		TA1CCR0 = TA1[6]+17;//2703
+		step = 7;
+	}
+	else if(v>200 && v<225)
+	{
+		TA1CCR0 = TA1[6]+13;//2703
+		step = 6;
+	}
+	else if(v>225 && v<250)
+	{
+		TA1CCR0 = TA1[7]+20;//2696
+		step = 5;
+	}
+	else if(v>250 && v<270)
+	{
+		TA1CCR0 = TA1[8]+23;//2690
+		step = 5;
+	}
+	else if(v>290 && v<300)
+	{
+		TA1CCR0 = TA1[10]+36;//2678
+		step = 5;
+	}
+	else if(v>300 && v<360)
+	{
+		TA1CCR0 = TA1[10]+26;//2678
+		step = 3;
+	}
+	else if(v>360 && v<420)
+	{
+		TA1CCR0 = TA1[10]+17;//2678
+		step = 3;
+	}
+	else if(v>420 && v<460)
+	{
+		TA1CCR0 = TA1[11]+16;//2675
+		step = 3;
+	}
+	else if(v>460)
+	{
+		TA1CCR0 = TA1[11];//2675
+		step = 0;
+	}
+	freq_sum = freq_mul + step;
 }
 
 int main(void)
+
 {
 	WDTCTL = WDTPW | WDTHOLD;	// stop watchdog timer
 	SetClock_MCLK12MHZ_SMCLK12MHZ_ACLK32_768K();
 	Timer_Init();
-	//ADC_Init();
+	ADS1118_init();
+	OLED_Init();
+	OLED_Clear();
+	P4REN |= BIT0 + BIT1 + BIT2 + BIT3;
+	P4OUT |= BIT0 + BIT1 + BIT2 + BIT3;
+	P4DIR &= ~(BIT0 + BIT1 + BIT2 + BIT3);
+	P4DIR |= BIT4;
+	P4OUT &= ~BIT4;
+
+	P3DIR |= BIT3;
+	P3OUT &= ~BIT3;
+
+
 	__bis_SR_register(GIE);
+	OLED_ShowString(37, 6, "f=");
+	OLED_ShowString(53+40, 6, "Hz");
 	while(1)
 	{
-//		ADC12CTL0 |= ADC12SC;
-	}
-}
-
-#pragma vector=TIMER0_B0_VECTOR
-__interrupt void TIMER0_B0_ISR(void)
-{
-	cnt++;
-	if(cnt == Num-adjust)
-	{
-		cnt = adjust;
-		mode++;
-	}
-	mode %=2;
-	switch(mode)
-	{
-	case 0:
-		if(cnt == adjust)
+		if(wt == 0x8F)
 		{
-			TA0CCTL3 = OUTMOD_6;
-			TA0CCTL2 = OUTMOD_2;
+			ADS1118_Get_U();
+			wt = 0;
+			freq = 0.146*freq_mul + 1.143;
+			OLED_ShowNum(53, 6, ((int)(freq*10))/10, 2, 16);
+			OLED_ShowChar(53+16, 6,'.');
+			OLED_ShowNum(53+24, 6, ((int)(freq*10))%10, 1, 16);
+			adjust_PWM();
+			OLED_ShowNum(53, 4, (int)TA1CCR0,5,16);
+			OLED_ShowNum(53, 2, step, 5, 16);
 		}
-		TA0CCR3 = sin_wave[cnt];
-		TA0CCR2 = sin_wave1[cnt];
-		break;
-	case 1:
-		if(cnt == adjust)
-		{
-			TA0CCTL2 = OUTMOD_6
-			TA0CCTL3 = OUTMOD_2;
-		}
-		TA0CCR3 = sin_wave1[cnt];
-		TA0CCR2 = sin_wave[cnt];
-		break;
-	default:break;
+		if(ADS1118_Voltage>0.8)
+			mode = 0;
 	}
 }
 
-#pragma vector = ADC12_VECTOR
-__interrupt void ADC12_ISR(void)
+#pragma vector=TIMER1_A1_VECTOR
+__interrupt void TIMER1_A1_ISR(void)
 {
-	switch(__even_in_range(ADC12IV,34))
+	if(mode == 1)
 	{
-		case  0: break;                           // Vector  0:  No interrupt
-		case  2: break;                           // Vector  2:  ADC overflow
-		case  4: break;                           // Vector  4:  ADC timing overflow
-		case  6:                                  // Vector  6:  ADC12IFG0
-			if(ADC12MEM0>128)
-				P2OUT |= BIT7;
-			else
-				P2OUT &= ~BIT7;
-
-			P4OUT = ADC12MEM0;
-			 __no_operation();
-		case  8: break;                           // Vector  8:  ADC12IFG1
-		case 10: break;                           // Vector 10:  ADC12IFG2
-		case 12: break;                           // Vector 12:  ADC12IFG3
-		case 14: break;                           // Vector 14:  ADC12IFG4
-		case 16: break;                           // Vector 16:  ADC12IFG5
-		case 18: break;                           // Vector 18:  ADC12IFG6
-		case 20: break;                           // Vector 20:  ADC12IFG7
-		case 22: break;                           // Vector 22:  ADC12IFG8
-		case 24: break;                           // Vector 24:  ADC12IFG9
-		case 26: break;                           // Vector 26:  ADC12IFG10
-		case 28: break;                           // Vector 28:  ADC12IFG11
-		case 30: break;                           // Vector 30:  ADC12IFG12
-		case 32: break;                           // Vector 32:  ADC12IFG13
-		case 34: break;                           // Vector 34:  ADC12IFG14
-		default: break;
+		P3OUT &= ~BIT3;
+	}
+	else if(mode == 0)
+	{
+		P3OUT |= BIT3;
+	}
+	P9OUT &= ~BIT6;
+	__delay_cycles(1);
+	P8OUT |= BIT2;
+	TA1CCTL1 &= ~CCIFG;
+	if(!(P4IN & BIT0))
+	{
+		if(freq_mul<680)
+			freq_mul += 3;
+		__delay_cycles(1000000);
+	}
+	if(!(P4IN & BIT1))
+	{
+		if(freq_mul>0)
+			freq_mul -= 3;
+		__delay_cycles(1000000);
+	}
+	if(!(P4IN & BIT2))
+	{
+		__delay_cycles(1000000);
+	}
+	if(!(P4IN & BIT3))
+	{
+		freq_mul = 334;
+		__delay_cycles(1000000);
 	}
 }
+
+#pragma vector=TIMER1_A0_VECTOR
+__interrupt void TIMER1_A0_ISR(void)
+{
+	static unsigned int tnt = 0, Index = 0;
+	if(mode == 1)
+	{
+		P3OUT &= ~BIT3;
+	}
+	else if(mode == 0)
+	{
+		check1++;
+		check2 = (check1 == 0xFF)? check2 + 1: check2;
+		check1 %= 0xFF;
+		mode = (check2 == 60)? 1 : 0;
+		check2 %= 60;
+		P3OUT |= BIT3;
+	}
+	P8OUT &= ~BIT2;
+	__delay_cycles(1);
+	P9OUT |= BIT6;
+	TA1CCTL0 &= ~CCIFG;
+	cnt += freq_sum;
+	Index = cnt >> 8;
+	tnt = (int)(Index<<1);
+	TA1CCR1 = (int)(5*sin_wave[tnt] + 70 );
+	if(tnt >= Num-5)
+	{
+		tnt = 0;
+		wt++;
+	}
+}
+
