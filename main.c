@@ -14,8 +14,8 @@
 static unsigned short cnt = 0;
 static unsigned int freq_mul = 334, step = 7, freq_sum = 342;//150
 unsigned int mode = 1, Config_M = 0x44, Config_L = 0x8B;
-unsigned int check1 = 0, check2 = 0, wt = 0;
-float ADS1118_Voltage = 0, freq = 0;
+unsigned int check1 = 0, check2 = 0, wt = 0, key = 0;
+float ADS1118_Voltage = 0, freq = 0, power = 0;
 unsigned int Config_Result_M, Config_Result_L;
 unsigned int waveform = 0;
 
@@ -103,34 +103,46 @@ void ADS1118_Get_U(void)
 	if(Data_REG>=0x8000)
 	{
 		Data_REG=0xFFFF-Data_REG;//把0xFFFF改成0x10000
-		ADS1118_Voltage=(-1.0)*((Data_REG*FS/0x8000));
+		ADS1118_Voltage = (-1.0)*((Data_REG*FS/0x8000));
 	}
 	else
-		ADS1118_Voltage=(1.0)*((Data_REG*FS/32768));
+	{
+		if(Config_M == 0x44)
+		{
+			power = (1.0)*((Data_REG*FS/32768));
+			Config_M = 0x54;
+		}
+		else if(Config_M == 0x54)
+		{
+			ADS1118_Voltage = (1.0)*((Data_REG*FS/32768));
+			Config_M = 0x44;
+		}
+		//ADS1118_Voltage=(1.0)*((Data_REG*FS/32768));
+	}
 }
 
-const unsigned int TA1[12] = { 2720, 2717, 2715, 2712, 2706, 2704, 2703, 2696, 2690, 2684, 2678, 2675 };
+const unsigned int TA1[12] = { 2720, 2717, 2715, 2712, 2706, 2704, 2703, 2696, 2690, 2684, 2678, 2677 };
 void adjust_PWM()
 {
 	int v = (int)(ADS1118_Voltage*1000);
-	if(v<60)
+	if(v<40)
 	{
 		TA1CCR0 = TA1[0]+20;
 		step = 7;
 	}
-	else if(v>60 && v<75)
+	else if(v>40 && v<97)
 	{
 		TA1CCR0 = TA1[0]+14;//2720;
 		step = 7;
 	}
-	else if(v>75 && v<97)
-	{
-		TA1CCR0 = TA1[0]+13;//2720;
-		step = 6;
-	}
+//	else if(v>75 && v<97)
+//	{
+//		TA1CCR0 = TA1[0]+13;//2720;+13
+//		step = 6;
+//	}
 	else if(v>97 && v<119)
 	{
-		TA1CCR0 = TA1[1]+13;//2717;
+		TA1CCR0 = TA1[1]+11;//2717;
 		step = 7;
 	}
 	else if(v>119 && v<129)
@@ -145,7 +157,7 @@ void adjust_PWM()
 	}
 	else if(v>156 && v<188)
 	{
-		TA1CCR0 = TA1[4]+19;//2706
+		TA1CCR0 = TA1[4]+16;//2706
 		step = 7;
 	}
 	else if(v>188 && v<200)
@@ -165,12 +177,12 @@ void adjust_PWM()
 	}
 	else if(v>250 && v<270)
 	{
-		TA1CCR0 = TA1[8]+23;//2690
+		TA1CCR0 = TA1[8]+21;//2690
 		step = 5;
 	}
 	else if(v>290 && v<300)
 	{
-		TA1CCR0 = TA1[10]+36;//2678
+		TA1CCR0 = TA1[10]+26;//2678
 		step = 5;
 	}
 	else if(v>300 && v<360)
@@ -180,15 +192,20 @@ void adjust_PWM()
 	}
 	else if(v>360 && v<420)
 	{
-		TA1CCR0 = TA1[10]+17;//2678
+		TA1CCR0 = TA1[10]+18;//2678
 		step = 3;
 	}
 	else if(v>420 && v<460)
 	{
-		TA1CCR0 = TA1[11]+16;//2675
+		TA1CCR0 = TA1[11]+15;//2675
 		step = 3;
 	}
-	else if(v>460)
+	else if(v>460 && v<500)
+	{
+		TA1CCR0 = TA1[11]+5;//2675
+		step = 1;
+	}
+	else if(v>500)
 	{
 		TA1CCR0 = TA1[11];//2675
 		step = 0;
@@ -214,13 +231,12 @@ int main(void)
 	P3DIR |= BIT3;
 	P3OUT &= ~BIT3;
 
-
 	__bis_SR_register(GIE);
 	OLED_ShowString(37, 6, "f=");
 	OLED_ShowString(53+40, 6, "Hz");
 	while(1)
 	{
-		if(wt == 0x8F)
+		if(wt == 0x4F)//
 		{
 			ADS1118_Get_U();
 			wt = 0;
@@ -230,10 +246,17 @@ int main(void)
 			OLED_ShowNum(53+24, 6, ((int)(freq*10))%10, 1, 16);
 			adjust_PWM();
 			OLED_ShowNum(53, 4, (int)TA1CCR0,5,16);
-			OLED_ShowNum(53, 2, step, 5, 16);
+			OLED_ShowNum(53, 2, power, 5, 16);
 		}
 		if(ADS1118_Voltage>0.8)
 			mode = 0;
+		if(power>1.67 || power<1.57)
+			mode = 2;
+		if(key&&(mode == 2))
+		{
+			P3OUT |= BIT3;
+			key = 0;
+		}
 	}
 }
 
@@ -256,22 +279,27 @@ __interrupt void TIMER1_A1_ISR(void)
 	{
 		if(freq_mul<680)
 			freq_mul += 3;
-		__delay_cycles(1000000);
+		__delay_cycles(10000000);
 	}
 	if(!(P4IN & BIT1))
 	{
 		if(freq_mul>0)
 			freq_mul -= 3;
-		__delay_cycles(1000000);
+		__delay_cycles(10000000);
 	}
 	if(!(P4IN & BIT2))
 	{
-		__delay_cycles(1000000);
+		key = 1;
+		if(mode == 2)
+			mode = 1;
+		__delay_cycles(10000000);
 	}
 	if(!(P4IN & BIT3))
 	{
 		freq_mul = 334;
-		__delay_cycles(1000000);
+		mode = 1;
+		key = 0;
+		__delay_cycles(10000000);
 	}
 }
 
@@ -300,10 +328,11 @@ __interrupt void TIMER1_A0_ISR(void)
 	Index = cnt >> 8;
 	tnt = (int)(Index<<1);
 	TA1CCR1 = (int)(5*sin_wave[tnt] + 70 );
+
 	if(tnt >= Num-5)
 	{
 		tnt = 0;
 		wt++;
 	}
+	//25313280/2060 = 12288 12288/1024 = 12 12*freq_div = frequency
 }
-
